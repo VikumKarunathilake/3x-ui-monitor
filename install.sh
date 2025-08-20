@@ -11,6 +11,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -19,6 +20,15 @@ INSTALL_DIR="/opt/3x-ui-monitor"
 SERVICE_NAME="3x-ui-monitor"
 USER_NAME="3x-ui-monitor"
 DB_PATH="/var/lib/3x-ui-monitor/data/x-ui.db"
+CONFIG_FILE="$INSTALL_DIR/.env"
+NGINX_CONF="/etc/nginx/sites-available/3x-ui-monitor"
+NGINX_ENABLED_CONF="/etc/nginx/sites-enabled/3x-ui-monitor"
+
+# User configuration variables
+PORT="3000"
+DOMAIN_NAME=""
+USE_SSL=false
+SSL_EMAIL=""
 
 log() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -31,6 +41,87 @@ warn() {
 error() {
     echo -e "${RED}[ERROR]${NC} $1"
     exit 1
+}
+
+info() {
+    echo -e "${CYAN}[INPUT]${NC} $1"
+}
+
+get_user_input() {
+    echo -e "${CYAN}"
+    echo "================================================"
+    echo "  3X-UI Monitor Configuration Setup"
+    echo "================================================"
+    echo -e "${NC}"
+    
+    # Get port number
+    while true; do
+        info "Enter the port number for 3X-UI Monitor (default: 3000):"
+        read -r input_port
+        if [[ -z "$input_port" ]]; then
+            PORT="3000"
+            break
+        elif [[ "$input_port" =~ ^[0-9]+$ ]] && [ "$input_port" -ge 1024 ] && [ "$input_port" -le 65535 ]; then
+            PORT="$input_port"
+            break
+        else
+            warn "Invalid port number. Please enter a number between 1024 and 65535."
+        fi
+    done
+    
+    # Get domain name or IP
+    info "Enter your domain name (e.g., monitor.example.com) or press Enter to use IP address:"
+    read -r input_domain
+    if [[ -n "$input_domain" ]]; then
+        DOMAIN_NAME="$input_domain"
+        
+        # Ask about SSL
+        info "Do you want to enable SSL with Let's Encrypt? (y/N):"
+        read -r ssl_choice
+        if [[ "$ssl_choice" =~ ^[Yy]$ ]]; then
+            USE_SSL=true
+            while true; do
+                info "Enter your email address for Let's Encrypt SSL certificates:"
+                read -r email_input
+                if [[ -n "$email_input" ]]; then
+                    SSL_EMAIL="$email_input"
+                    break
+                else
+                    warn "Email address is required for SSL certificates."
+                fi
+            done
+        fi
+    fi
+    
+    # Confirm database path
+    info "Current database path: $DB_PATH"
+    info "Is this the correct path to your x-ui.db file? (Y/n):"
+    read -r db_confirm
+    if [[ "$db_confirm" =~ ^[Nn]$ ]]; then
+        info "Enter the full path to your x-ui.db file:"
+        read -r custom_db_path
+        if [[ -n "$custom_db_path" ]]; then
+            DB_PATH="$custom_db_path"
+        fi
+    fi
+    
+    # Summary
+    echo -e "${GREEN}"
+    echo "Configuration Summary:"
+    echo "---------------------"
+    echo "Port: $PORT"
+    if [[ -n "$DOMAIN_NAME" ]]; then
+        echo "Domain: $DOMAIN_NAME"
+        echo "SSL: $USE_SSL"
+        [[ "$USE_SSL" == true ]] && echo "SSL Email: $SSL_EMAIL"
+    else
+        echo "Access: IP address (port $PORT)"
+    fi
+    echo "Database: $DB_PATH"
+    echo -e "${NC}"
+    
+    info "Press Enter to continue with installation or Ctrl+C to cancel..."
+    read -r
 }
 
 check_root() {
@@ -133,6 +224,20 @@ install_dependencies() {
     fi
 }
 
+setup_environment() {
+    log "Setting up environment configuration..."
+    
+    # Create .env file
+    sudo tee "$CONFIG_FILE" > /dev/null << EOF
+PORT=$PORT
+DB_PATH=$DB_PATH
+NODE_ENV=production
+EOF
+
+    sudo chown "$USER_NAME:$USER_NAME" "$CONFIG_FILE"
+    sudo chmod 600 "$CONFIG_FILE"
+}
+
 setup_database() {
     log "Setting up database directory..."
     
@@ -147,12 +252,81 @@ setup_database() {
             log "Database file found and is readable: $DB_PATH"
         else
             warn "Database file exists but is not readable. Adjusting permissions..."
+            sudo chown "$USER_NAME:$USER_NAME" "$DB_PATH"
             sudo chmod 644 "$DB_PATH"
         fi
     else
         warn "Database file not found: $DB_PATH"
         warn "Please ensure your 3X-UI database exists at this location"
+        info "Press Enter to continue or Ctrl+C to abort..."
+        read -r
     fi
+}
+
+install_nginx() {
+    if [[ -z "$DOMAIN_NAME" ]]; then
+        return
+    fi
+    
+    log "Installing and configuring Nginx..."
+    
+    # Install Nginx
+    if ! command -v nginx &> /dev/null; then
+        sudo apt-get install -y nginx
+    fi
+    
+    # Create Nginx configuration
+    sudo tee "$NGINX_CONF" > /dev/null << EOF
+server {
+    listen 80;
+    server_name $DOMAIN_NAME;
+    
+    location / {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+    
+    # Enable site
+    sudo ln -sf "$NGINX_CONF" "$NGINX_ENABLED_CONF"
+    
+    # Test Nginx configuration
+    sudo nginx -t
+    
+    # Restart Nginx
+    sudo systemctl restart nginx
+    sudo systemctl enable nginx
+    
+    log "Nginx configuration complete"
+}
+
+setup_ssl() {
+    if [[ "$USE_SSL" != true ]] || [[ -z "$DOMAIN_NAME" ]]; then
+        return
+    fi
+    
+    log "Setting up SSL with Let's Encrypt..."
+    
+    # Install Certbot
+    if ! command -v certbot &> /dev/null; then
+        sudo apt-get install -y certbot python3-certbot-nginx
+    fi
+    
+    # Obtain SSL certificate
+    sudo certbot --nginx -d "$DOMAIN_NAME" --email "$SSL_EMAIL" --agree-tos --non-interactive
+    
+    # Set up automatic renewal
+    (sudo crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | sudo crontab -
+    
+    log "SSL setup complete"
 }
 
 create_service() {
@@ -164,6 +338,7 @@ create_service() {
 [Unit]
 Description=3X-UI Monitor Service
 After=network.target
+$( [[ -n "$DOMAIN_NAME" ]] && echo "After=nginx.service" )
 
 [Service]
 Type=simple
@@ -171,6 +346,7 @@ User=$USER_NAME
 Group=$USER_NAME
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$INSTALL_DIR/node_modules/.bin:/usr/bin
+EnvironmentFile=$CONFIG_FILE
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=3
@@ -219,7 +395,7 @@ start_service() {
     sudo systemctl start "$SERVICE_NAME"
     
     # Wait a bit for service to start
-    sleep 3
+    sleep 5
     
     if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
         log "Service started successfully"
@@ -229,20 +405,29 @@ start_service() {
 }
 
 show_success() {
-    local ip_address=$(hostname -I | awk '{print $1}')
-    
     echo -e "${GREEN}"
     echo "================================================"
     echo "  3X-UI Monitor Installation Complete!"
     echo "================================================"
     echo -e "${NC}"
+    
     echo "Service: $SERVICE_NAME"
     echo "Installation Directory: $INSTALL_DIR"
     echo "Database Path: $DB_PATH"
     echo "Service Status: $(sudo systemctl is-active $SERVICE_NAME)"
     echo ""
-    echo "Access the application at:"
-    echo -e "  ${BLUE}http://${ip_address}:3000${NC}"
+    
+    if [[ -n "$DOMAIN_NAME" ]]; then
+        local protocol="http"
+        [[ "$USE_SSL" == true ]] && protocol="https"
+        echo "Access the application at:"
+        echo -e "  ${BLUE}${protocol}://${DOMAIN_NAME}${NC}"
+    else
+        local ip_address=$(hostname -I | awk '{print $1}')
+        echo "Access the application at:"
+        echo -e "  ${BLUE}http://${ip_address}:${PORT}${NC}"
+    fi
+    
     echo ""
     echo "Management commands:"
     echo "  Start:    sudo systemctl start $SERVICE_NAME"
@@ -251,6 +436,13 @@ show_success() {
     echo "  Status:   sudo systemctl status $SERVICE_NAME"
     echo "  Logs:     journalctl -u $SERVICE_NAME -f"
     echo ""
+    
+    if [[ "$USE_SSL" == true ]]; then
+        echo "SSL Certificate: Managed by Let's Encrypt"
+        echo "SSL Renewal: Automatic (cron job configured)"
+        echo ""
+    fi
+    
     echo -e "${YELLOW}Note: Ensure your 3X-UI database is accessible at $DB_PATH${NC}"
     echo -e "${GREEN}================================================"
     echo -e "${NC}"
@@ -264,6 +456,9 @@ main() {
     echo "================================================"
     echo -e "${NC}"
     
+    # Get user configuration
+    get_user_input
+    
     # Check prerequisites
     check_root
     check_dependencies
@@ -273,7 +468,10 @@ main() {
     setup_user
     clone_repository
     install_dependencies
+    setup_environment
     setup_database
+    install_nginx
+    setup_ssl
     create_service
     setup_permissions
     build_application
