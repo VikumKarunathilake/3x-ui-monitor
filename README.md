@@ -1,36 +1,144 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 3X-UI Monitor
 
-## Getting Started
+A modern web interface for monitoring 3X-UI client usage statistics. Built with Next.js, TypeScript, and Tailwind CSS.
 
-First, run the development server:
+![3X-UI Monitor](https://img.shields.io/badge/3X--UI-Monitor-blue?style=for-the-badge)
+![License](https://img.shields.io/badge/License-CC--BY--ND--4.0-lightgrey?style=for-the-badge)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?style=for-the-badge)
+![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge)
+
+## Features
+
+- 📊 **Real-time Usage Monitoring**: View upload, download, and total usage statistics
+- 🎯 **Client Identification**: Support for both UUID and V2Ray config URLs
+- 🚀 **Modern UI**: Clean, responsive interface built with Tailwind CSS
+- 🔒 **Secure**: Rate limiting and input validation
+- 📱 **Mobile Friendly**: Responsive design that works on all devices
+- ⚡ **Fast**: Built with Next.js for optimal performance
+
+## Quick Installation
+
+One-command installation (requires sudo privileges):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bash <(curl -Ls https://raw.githubusercontent.com/VikumKarunathilake/3x-ui-monitor/master/install.sh)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The installation script will:
+- Install Node.js 18+
+- Set up a systemd service
+- Configure proper permissions
+- Start the 3X-UI Monitor service
+  
+## Usage
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Open the application** in your web browser
+2. **Enter your client information**:
+   - UUID (e.g., `12345678-1234-1234-1234-123456789012`)
+   - V2Ray config URL (e.g., `vless://uuid@domain.com:443?security=tls`)
+3. **View usage statistics** including:
+   - Upload/Download traffic
+   - Total data allowance
+   - Remaining data
+   - Account status and expiry
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API Endpoint
 
-## Learn More
+The application provides a REST API endpoint:
 
-To learn more about Next.js, take a look at the following resources:
+### POST `/api`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Request:**
+```json
+{
+  "clientId": "uuid-string-here"
+}
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Response:**
+```json
+{
+  "traffic_id": 1,
+  "email": "client@example.com",
+  "inbound_id": 1,
+  "client_id": "uuid-string",
+  "enable": 1,
+  "expiry_time": "30d 5h 12m 3s",
+  "upGB": "12.45",
+  "downGB": "45.67",
+  "totalGB": "100.00"
+}
+```
 
-## Deploy on Vercel
+## Systemd Service
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The installation creates a systemd service for easy management:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Start service:**
+```bash
+sudo systemctl start 3x-ui-monitor
+```
+
+**Stop service:**
+```bash
+sudo systemctl stop 3x-ui-monitor
+```
+
+**Check status:**
+```bash
+sudo systemctl status 3x-ui-monitor
+```
+
+**View logs:**
+```bash
+journalctl -u 3x-ui-monitor -f
+```
+
+## Security Features
+
+- Rate limiting (100 requests per second per IP)
+- SQL injection prevention with parameterized queries
+- Input validation for UUID and config formats
+- Secure database handling
+
+### Logs
+
+Check service logs for detailed error information:
+```bash
+journalctl -u 3x-ui-monitor -f
+```
+
+## Contributing
+
+This project is licensed under Creative Commons Attribution-NoDerivs (CC-BY-ND). This means:
+
+- ✅ You can use and redistribute this software
+- ✅ You must give appropriate credit to the original author
+- ❌ You cannot distribute modified versions without permission
+
+For modification requests, please contact the maintainer.
+
+## License
+
+This project is licensed under the Creative Commons Attribution-NoDerivs 4.0 International License (CC-BY-ND-4.0).
+
+[![CC BY-ND 4.0](https://licensebuttons.net/l/by-nd/4.0/88x31.png)](https://creativecommons.org/licenses/by-nd/4.0/)
+
+## Support
+
+If you find this project useful, please consider giving it a star ⭐ on GitHub!
+
+## Stargazers over time
+
+[![Stargazers over time](https://starchart.cc/VikumKarunathilake/3x-ui-monitor.svg?variant=adaptive)](https://starchart.cc/VikumKarunathilake/3x-ui-monitor)
+
+## Acknowledgments
+
+- Built with [Next.js](https://nextjs.org/)
+- UI components with [Tailwind CSS](https://tailwindcss.com/)
+- Icons by [Lucide](https://lucide.dev/)
+- Database access with [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
+
+---
+
+**Disclaimer**: This project is not affiliated with the official 3X-UI project. It is a third-party monitoring interface.
