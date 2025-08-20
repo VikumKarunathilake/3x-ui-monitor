@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { CircularProgress } from '@/components/ui/circular-progress'
 import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Terminal, ArrowLeft, RefreshCw } from 'lucide-react'
+import { Terminal, ArrowLeft, RefreshCw, Wifi, WifiOff, Calendar } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import Link from "next/link"
 
@@ -23,17 +23,23 @@ interface ClientData {
     totalGB: string
 }
 
+type LoadingState = 'initial' | 'loading' | 'success' | 'error'
+
 export default function UsagePage() {
     const searchParams = useSearchParams()
     const clientId = searchParams.get('clientId')
     const [data, setData] = useState<ClientData | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
+    const [loadingState, setLoadingState] = useState<LoadingState>('initial')
     const [error, setError] = useState<string | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
 
     const fetchData = async () => {
         try {
-            setIsRefreshing(true)
+            if (loadingState !== 'initial') {
+                setIsRefreshing(true)
+            } else {
+                setLoadingState('loading')
+            }
             setError(null)
 
             if (!clientId) {
@@ -55,28 +61,32 @@ export default function UsagePage() {
 
             const result = await response.json()
             setData(result)
+            setLoadingState('success')
+            setIsRefreshing(false)
         } catch (err) {
             console.error('Error fetching data:', err)
-            setError(err instanceof Error ? err.message : 'An unknown error occurred')
-            toast.error('Failed to fetch client data')
-        } finally {
-            setIsLoading(false)
+            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred'
+            setError(errorMessage)
+            setLoadingState('error')
             setIsRefreshing(false)
+            toast.error('Failed to fetch client data')
         }
     }
 
     useEffect(() => {
-        fetchData()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clientId])
+        if (clientId && loadingState === 'initial') {
+            fetchData()
+        }
+    }, [clientId, loadingState])
 
     const handleRefresh = () => {
         fetchData()
     }
 
-    if (isLoading && !isRefreshing) {
+    // Show loading skeleton only during initial load and loading state
+    if (loadingState === 'initial' || loadingState === 'loading') {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-center justify-center p-4 bg-background">
                 <Card className="w-full max-w-md">
                     <CardHeader>
                         <CardTitle>
@@ -105,9 +115,9 @@ export default function UsagePage() {
         )
     }
 
-    if (error) {
+    if (loadingState === 'error') {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-center justify-center p-4 bg-background">
                 <Alert variant="destructive" className="max-w-md w-full">
                     <Terminal className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
@@ -135,7 +145,7 @@ export default function UsagePage() {
 
     if (!data) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="min-h-screen flex items-center justify-center p-4 bg-background">
                 <Alert variant="destructive" className="max-w-md w-full">
                     <Terminal className="h-4 w-4" />
                     <AlertTitle>No Data Found</AlertTitle>
@@ -163,23 +173,27 @@ export default function UsagePage() {
 
     // Calculate usage values
     const totalUsed = parseFloat(data.upGB) + parseFloat(data.downGB)
-    const remaining = parseFloat(data.totalGB) - totalUsed
-    const usagePercentage = (totalUsed / parseFloat(data.totalGB)) * 100
+    const remaining = Math.max(0, parseFloat(data.totalGB) - totalUsed)
+    const usagePercentage = parseFloat(data.totalGB) > 0
+        ? (totalUsed / parseFloat(data.totalGB)) * 100
+        : 0
 
     return (
-        <div className="min-h-screen p-4">
+        <div className="min-h-screen p-4 bg-background">
             <div className="max-w-4xl mx-auto py-8">
-                <Card>
+                <Card className="shadow-lg">
                     <CardHeader>
                         <div className="flex justify-between items-start">
                             <div>
-                                <Link
-                                    href='/'
-                                    className="w-full sm:w-auto"
-                                >
-                                    <CardTitle className="text-xl sm:text-2xl">Client Usage</CardTitle>
+                                <Link href='/' className="inline-block mb-2">
+                                    <Button variant="ghost" size="sm">
+                                        <ArrowLeft className="mr-2 h-4 w-4" />
+                                        Back to Home
+                                    </Button>
                                 </Link>
-
+                                <CardTitle className="text-xl sm:text-2xl">
+                                    Client Usage Dashboard
+                                </CardTitle>
                                 <CardDescription className="truncate max-w-[90%]">
                                     {data.email}
                                 </CardDescription>
@@ -189,28 +203,29 @@ export default function UsagePage() {
                                 variant="outline"
                                 onClick={handleRefresh}
                                 disabled={isRefreshing}
+                                className="flex items-center"
                             >
                                 {isRefreshing ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                    <RefreshCw className="h-4 w-4 animate-spin mr-1" />
                                 ) : (
-                                    <RefreshCw className="h-4 w-4" />
+                                    <RefreshCw className="h-4 w-4 mr-1" />
                                 )}
-                                <span className="sr-only">Refresh</span>
+                                Refresh
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex flex-col items-center mb-6">
+                        <div className="flex flex-col items-center mb-8">
                             <CircularProgress
                                 max={parseFloat(data.totalGB)}
                                 segments={[
                                     {
-                                        value: parseFloat((parseFloat(data.downGB)).toFixed(2)),
+                                        value: parseFloat(data.downGB),
                                         color: "text-blue-500",
                                         label: "Download"
                                     },
                                     {
-                                        value: parseFloat((parseFloat(data.upGB)).toFixed(2)),
+                                        value: parseFloat(data.upGB),
                                         color: "text-green-500",
                                         label: "Upload"
                                     },
@@ -223,39 +238,62 @@ export default function UsagePage() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                             <StatCard
-                                title="Remaining"
+                                title="Remaining Data"
                                 value={`${remaining.toFixed(2)} GB`}
                                 description={`${Math.max(0, (100 - usagePercentage)).toFixed(1)}% of total`}
+                                icon={<Wifi className="h-5 w-5 text-blue-500" />}
                             />
                             <StatCard
-                                title="Usage"
+                                title="Total Used"
                                 value={`${totalUsed.toFixed(2)} GB`}
                                 description={`${usagePercentage.toFixed(1)}% of total`}
+                                icon={<WifiOff className="h-5 w-5 text-orange-500" />}
                             />
                             <StatCard
-                                title="Total"
+                                title="Total Allowance"
                                 value={`${parseFloat(data.totalGB).toFixed(2)} GB`}
-                                description="Data allowance"
+                                description="Data allocation"
+                                icon={<div className="h-5 w-5 text-purple-500 font-bold">∑</div>}
                             />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <StatCard
                                 title="Upload"
                                 value={`${data.upGB} GB`}
-                                description={`${(parseFloat(data.upGB) / totalUsed * 100).toFixed(1)}% of usage`}
+                                description={totalUsed > 0 ? `${(parseFloat(data.upGB) / totalUsed * 100).toFixed(1)}% of usage` : "0% of usage"}
                             />
                             <StatCard
                                 title="Download"
                                 value={`${data.downGB} GB`}
-                                description={`${(parseFloat(data.downGB) / totalUsed * 100).toFixed(1)}% of usage`}
+                                description={totalUsed > 0 ? `${(parseFloat(data.downGB) / totalUsed * 100).toFixed(1)}% of usage` : "0% of usage"}
                             />
-
                             <StatCard
                                 title="Status"
                                 value={data.enable ? "Active" : "Disabled"}
                                 description={`Expires: ${data.expiry_time}`}
-                                valueColor={data.enable ? "text-green-500" : "text-red-500"}
+                                icon={data.enable ?
+                                    <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div> :
+                                    <div className="h-3 w-3 bg-red-500 rounded-full"></div>
+                                }
                             />
+                        </div>
+
+                        <div className="mt-6 p-4 bg-muted rounded-lg">
+                            <div className="flex items-center">
+                                <Calendar className="h-5 w-5 text-muted-foreground mr-2" />
+                                <h3 className="text-sm font-medium">
+                                    Expiry Information
+                                </h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                {data.expiry_time === "∞" ?
+                                    "This account has no expiration date" :
+                                    `Account will expire in: ${data.expiry_time}`
+                                }
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
@@ -268,17 +306,20 @@ function StatCard({
     title,
     value,
     description,
-    valueColor = "text-foreground"
+    icon
 }: {
     title: string;
     value: string;
     description: string;
-    valueColor?: string;
+    icon?: React.ReactNode;
 }) {
     return (
-        <div className="border rounded-lg p-4">
-            <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-            <p className={`text-2xl font-bold mt-1 ${valueColor}`}>{value}</p>
+        <div className="border rounded-lg p-4 bg-card shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+                {icon}
+            </div>
+            <p className="text-2xl font-bold">{value}</p>
             <p className="text-sm text-muted-foreground mt-1">{description}</p>
         </div>
     )

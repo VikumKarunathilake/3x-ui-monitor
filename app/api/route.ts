@@ -11,19 +11,45 @@ interface Client {
   [key: string]: unknown // optional extra fields
 }
 
+interface ClientTrafficData {
+  traffic_id: number
+  email: string
+  inbound_id: number
+  up: number
+  down: number
+  total: number
+  expiry_time: number
+  enable: number
+  inbound_settings: string
+}
 
-// Rate limiting configuration (10 requests per minute)
+interface InboundSettings {
+  clients?: Client[]
+}
+
+// Rate limiting configuration (100 requests per second)
 const rateLimiter = new RateLimiterMemory({
-  points: 100, // 10 requests
-  duration: 1, // per 1 seconds
+  points: 100, // 100 requests
+  duration: 1, // per 1 second
 })
 
-// Path to SQLite DB
-const dbPath = path.join(process.cwd(), "data", "x-ui.db")
-const db = new Database(dbPath, { readonly: false }) // Open in read-only mode
+// Database connection management (singleton pattern)
+let db: Database.Database | null = null
 
-// Enable WAL mode for better concurrency
-db.pragma("journal_mode = WAL")
+function getDatabase(): Database.Database {
+  if (!db) {
+    // Update the path to the new location
+    const dbPath = "/etc/x-ui/x-ui.db"
+    db = new Database(dbPath, { readonly: false })
+    
+    // Enable WAL mode for better concurrency
+    db.pragma("journal_mode = WAL")
+    
+    // Enable foreign key constraints
+    db.pragma("foreign_keys = ON")
+  }
+  return db
+}
 
 function formatExpiry(expiry: number): string {
   if (expiry === 0) return "∞"
@@ -40,23 +66,39 @@ function formatExpiry(expiry: number): string {
   return `${days}d ${hours}h ${minutes}m ${seconds}s`
 }
 
+// Response headers for CORS
+const responseHeaders = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Rate limiting check using IP address
     const ip = req.headers.get('x-real-ip') || req.headers.get('x-forwarded-for') || 'unknown'
     try {
-  await rateLimiter.consume(ip)
-} catch {
-  return NextResponse.json(
-    { error: 'Too many requests. Please try again later.' },
-    { status: 429 }
-  )
-}
-
+      await rateLimiter.consume(ip)
+    } catch {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { 
+          status: 429,
+          headers: responseHeaders
+        }
+      )
+    }
 
     // Only accept POST requests
     if (req.method !== 'POST') {
-      return NextResponse.json({ error: 'Method not allowed' }, { status: 405 })
+      return NextResponse.json(
+        { error: 'Method not allowed' }, 
+        { 
+          status: 405,
+          headers: responseHeaders
+        }
+      )
     }
 
     // Get clientId from request body
@@ -64,13 +106,28 @@ export async function POST(req: NextRequest) {
     
     // Input validation
     if (!clientId) {
-      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Client ID is required' }, 
+        { 
+          status: 400,
+          headers: responseHeaders
+        }
+      )
     }
 
     // Validate UUID format
     if (!uuidValidate(clientId)) {
-      return NextResponse.json({ error: 'Invalid Client' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Invalid Client ID format' }, 
+        { 
+          status: 400,
+          headers: responseHeaders
+        }
+      )
     }
+
+    // Get database instance
+    const db = getDatabase()
 
     // Prepare statement to find client by ID in JSON settings
     // This query joins client_traffics with inbounds and uses JSON functions to search
@@ -89,42 +146,38 @@ export async function POST(req: NextRequest) {
       JOIN inbounds i ON ct.inbound_id = i.id
       WHERE EXISTS (
         SELECT 1 FROM json_each(i.settings, '$.clients') 
-        WHERE json_extract(value, '$.id') = @clientId
+        WHERE json_extract(value, '$.id') = ?
         AND json_extract(value, '$.email') = ct.email
       )
       LIMIT 1
     `)
 
     // Execute query with parameter binding to prevent SQL injection
-    const clientData = clientQuery.get({ clientId }) as {
-      traffic_id: number
-      email: string
-      inbound_id: number
-      up: number
-      down: number
-      total: number
-      expiry_time: number
-      enable: number
-      inbound_settings: string
-    } | undefined
+    const clientData = clientQuery.get(clientId) as ClientTrafficData | undefined
 
     if (!clientData) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "Client not found" }, 
+        { 
+          status: 404,
+          headers: responseHeaders
+        }
+      )
     }
 
     // Extract client_id from settings
     let clientIdFromSettings: string | null = null
-try {
-  const settings = JSON.parse(clientData.inbound_settings) as { clients?: Client[] }
+    try {
+      const settings = JSON.parse(clientData.inbound_settings) as InboundSettings
 
-  if (Array.isArray(settings.clients)) {
-    const match = settings.clients.find((c: Client) => c.email === clientData.email)
-    if (match) clientIdFromSettings = match.id
-  }
-} catch (err) {
-  console.error("Error parsing inbound settings:", err)
-}
-
+      if (Array.isArray(settings.clients)) {
+        const match = settings.clients.find((c: Client) => c.email === clientData.email)
+        if (match) clientIdFromSettings = match.id
+      }
+    } catch (err) {
+      console.error("Error parsing inbound settings:", err)
+      // Continue even if parsing fails - we'll just have null for clientIdFromSettings
+    }
 
     // Format the response
     const result = {
@@ -139,14 +192,54 @@ try {
       totalGB: (clientData.total / 1024 / 1024 / 1024).toFixed(2),
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, { headers: responseHeaders })
   } catch (err) {
-    console.error(err)
-    return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 })
+    console.error('Database error:', err)
+    
+    // Handle specific database errors
+    if (err instanceof Error) {
+      if (err.message.includes('SQLITE_')) {
+        return NextResponse.json(
+          { error: "Database error occurred" }, 
+          { 
+            status: 500,
+            headers: responseHeaders
+          }
+        )
+      }
+    }
+    
+    return NextResponse.json(
+      { error: "Failed to fetch data" }, 
+      { 
+        status: 500,
+        headers: responseHeaders
+      }
+    )
   }
 }
 
 // Add this to explicitly reject other methods
 export async function GET() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 })
+  return NextResponse.json(
+    { error: 'Method not allowed' }, 
+    { 
+      status: 405,
+      headers: responseHeaders
+    }
+  )
+}
+
+// Handle OPTIONS requests for CORS
+export async function OPTIONS() {
+  return NextResponse.json(
+    {}, 
+    {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      }
+    }
+  )
 }
