@@ -149,19 +149,18 @@ install_nodejs() {
         local node_version=$(node --version | cut -d'v' -f2)
         local major_version=$(echo $node_version | cut -d'.' -f1)
         
-        if [[ $major_version -ge 18 ]]; then
+        if [[ $major_version -ge 20 ]]; then
             log "Node.js $node_version is already installed"
             return
         else
-            warn "Node.js version $node_version is too old. Need version 18 or higher."
+            warn "Node.js version $node_version is too old. Need version 20 or higher."
         fi
     fi
     
-    log "Installing Node.js 18..."
+    log "Installing Node.js 24..."
     
-    # Install Node.js using NodeSource
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+    sudo apt-get install -y nodejs build-essential
     
     if ! command -v node &> /dev/null; then
         error "Failed to install Node.js"
