@@ -19,7 +19,7 @@ REPO_URL="https://github.com/VikumKarunathilake/3x-ui-monitor"
 INSTALL_DIR="/opt/3x-ui-monitor"
 SERVICE_NAME="3x-ui-monitor"
 USER_NAME="3x-ui-monitor"
-DB_PATH="/var/lib/3x-ui-monitor/data/x-ui.db"
+DB_PATH="/etc/x-ui/x-ui.db"
 CONFIG_FILE="$INSTALL_DIR/.env"
 NGINX_CONF="/etc/nginx/sites-available/3x-ui-monitor"
 NGINX_ENABLED_CONF="/etc/nginx/sites-enabled/3x-ui-monitor"
@@ -56,8 +56,7 @@ get_user_input() {
     
     # Get port number
     while true; do
-        info "Enter the port number for 3X-UI Monitor (default: 3000):"
-        read -r input_port
+        read -rp "Enter the port number for 3X-UI Monitor (default: 3000): " input_port
         if [[ -z "$input_port" ]]; then
             PORT="3000"
             break
@@ -65,41 +64,36 @@ get_user_input() {
             PORT="$input_port"
             break
         else
-            warn "Invalid port number. Please enter a number between 1024 and 65535."
+            echo -e "${YELLOW}[WARN]${NC} Invalid port number. Please enter a number between 1024 and 65535."
         fi
     done
     
     # Get domain name or IP
-    info "Enter your domain name (e.g., monitor.example.com) or press Enter to use IP address:"
-    read -r input_domain
+    read -rp "Enter your domain name (e.g., monitor.example.com) or press Enter to use IP address: " input_domain
     if [[ -n "$input_domain" ]]; then
         DOMAIN_NAME="$input_domain"
         
         # Ask about SSL
-        info "Do you want to enable SSL with Let's Encrypt? (y/N):"
-        read -r ssl_choice
+        read -rp "Do you want to enable SSL with Let's Encrypt? (y/N): " ssl_choice
         if [[ "$ssl_choice" =~ ^[Yy]$ ]]; then
             USE_SSL=true
             while true; do
-                info "Enter your email address for Let's Encrypt SSL certificates:"
-                read -r email_input
+                read -rp "Enter your email address for Let's Encrypt SSL certificates: " email_input
                 if [[ -n "$email_input" ]]; then
                     SSL_EMAIL="$email_input"
                     break
                 else
-                    warn "Email address is required for SSL certificates."
+                    echo -e "${YELLOW}[WARN]${NC} Email address is required for SSL certificates."
                 fi
             done
         fi
     fi
     
     # Confirm database path
-    info "Current database path: $DB_PATH"
-    info "Is this the correct path to your x-ui.db file? (Y/n):"
-    read -r db_confirm
+    echo -e "${CYAN}[INPUT]${NC} Current database path: $DB_PATH"
+    read -rp "Is this the correct path to your x-ui.db file? (Y/n): " db_confirm
     if [[ "$db_confirm" =~ ^[Nn]$ ]]; then
-        info "Enter the full path to your x-ui.db file:"
-        read -r custom_db_path
+        read -rp "Enter the full path to your x-ui.db file: " custom_db_path
         if [[ -n "$custom_db_path" ]]; then
             DB_PATH="$custom_db_path"
         fi
@@ -120,14 +114,7 @@ get_user_input() {
     echo "Database: $DB_PATH"
     echo -e "${NC}"
     
-    info "Press Enter to continue with installation or Ctrl+C to cancel..."
-    read -r
-}
-
-check_root() {
-    if [[ $EUID -eq 0 ]]; then
-        error "This script should not be run as root. Please run as a regular user with sudo privileges."
-    fi
+    read -rp "Press Enter to continue with installation or Ctrl+C to cancel... "
 }
 
 check_dependencies() {
@@ -258,8 +245,7 @@ setup_database() {
     else
         warn "Database file not found: $DB_PATH"
         warn "Please ensure your 3X-UI database exists at this location"
-        info "Press Enter to continue or Ctrl+C to abort..."
-        read -r
+        read -rp "Press Enter to continue or Ctrl+C to abort... "
     fi
 }
 
@@ -460,7 +446,6 @@ main() {
     get_user_input
     
     # Check prerequisites
-    check_root
     check_dependencies
     
     # Installation steps
