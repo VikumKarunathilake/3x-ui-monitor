@@ -103,9 +103,9 @@ clone_repository() {
 install_dependencies() {
     cd "$INSTALL_DIR"
     npm install -g pnpm
-    pnpm install --production || error "npm install failed"
+    pnpm install || error "pnpm install failed"  # <-- install ALL deps
     pnpm run build || error "Build failed"
-    chmod +x node_modules/.bin/*   # Make sure binaries like 'next' are executable
+    chmod +x node_modules/.bin/*
 }
 
 # ------------------------
@@ -138,7 +138,7 @@ install_nginx() {
     sudo apt-get install -y nginx
     cat > "$NGINX_CONF" << EOF
 server {
-    listen 80;
+    listen $PORT;
     server_name $DOMAIN_NAME;
 
     location / {
@@ -158,6 +158,7 @@ EOF
     sudo nginx -t
     sudo systemctl restart nginx
     sudo systemctl enable nginx
+    log "Nginx is now running on port $PORT for $DOMAIN_NAME"
 }
 
 # ------------------------
