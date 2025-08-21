@@ -102,7 +102,8 @@ clone_repository() {
 # ------------------------
 install_dependencies() {
     cd "$INSTALL_DIR"
-    npm install --production || error "npm install failed"
+    npm install -g pnpm
+    pnpm install --production || error "npm install failed"
     chmod +x node_modules/.bin/*   # Make sure binaries like 'next' are executable
 }
 
@@ -182,7 +183,7 @@ User=$USER_NAME
 Group=$USER_NAME
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$INSTALL_DIR/node_modules/.bin:/usr/bin
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/env PORT=$PORT /usr/bin/pnpm start
 Restart=always
 RestartSec=3
 NoNewPrivileges=yes
