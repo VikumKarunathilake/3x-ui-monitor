@@ -104,6 +104,7 @@ install_dependencies() {
     cd "$INSTALL_DIR"
     npm install -g pnpm
     pnpm install --production || error "npm install failed"
+    pnpm run build || error "Build failed"
     chmod +x node_modules/.bin/*   # Make sure binaries like 'next' are executable
 }
 
