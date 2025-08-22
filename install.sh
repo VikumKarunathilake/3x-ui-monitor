@@ -41,8 +41,8 @@ get_user_input() {
     read -rp "Enter port number for 3X-UI Monitor (default: 3000): " input_port
     PORT=${input_port:-3000}
     
-    read -rp "Enter domain name (or press Enter to use IP): " input_domain
-    DOMAIN_NAME="${input_domain:-$(hostname -I | awk '{print $1}')}"
+    read -rp "Enter domain name for SSL (or press Enter to skip SSL): " input_domain
+    DOMAIN_NAME="${input_domain}"
     
     if [[ -n "$DOMAIN_NAME" ]]; then
         read -rp "Enable SSL with Let's Encrypt? (y/N): " ssl_choice
@@ -76,7 +76,6 @@ check_dependencies() {
         fi
     done
 }
-
 
 # ------------------------
 # Node.js
@@ -240,15 +239,40 @@ install_nginx() {
         log "Nginx is already installed."
     fi
     
-    # Configure Nginx for reverse proxy to monitor using subdomain (e.g., monitor.yourdomain.com)
-    if [[ -n "$DOMAIN_NAME" ]]; then
-        log "Setting up Nginx configuration for subdomain monitor.$DOMAIN_NAME..."
+    # Configure Nginx for reverse proxy
+    if [[ -n "$DOMAIN_NAME" && "$USE_SSL" == true ]]; then
+        log "Setting up Nginx configuration for SSL on port 81..."
         
-        # Configure Nginx for reverse proxy to monitor without path on subdomain
+        # Configure Nginx for SSL on port 81 and HTTP on user port
         cat > "$NGINX_CONF" << EOF
+# HTTP server for direct access on user port
 server {
-    listen 81;
-    server_name monitor.$DOMAIN_NAME;
+    listen $PORT;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://127.0.0.1:$PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+
+# HTTPS server for SSL access on port 81
+server {
+    listen 81 ssl;
+    server_name $DOMAIN_NAME;
+
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
@@ -269,21 +293,21 @@ EOF
         sudo nginx -t || { error "Nginx configuration test failed. Exiting."; }
         sudo systemctl restart nginx || { error "Failed to restart Nginx. Exiting."; }
         sudo systemctl enable nginx || { error "Failed to enable Nginx service. Exiting."; }
-        log "Nginx is now running on port for monitor.$DOMAIN_NAME."
+        log "Nginx configured: HTTP on port $PORT, HTTPS on port 81."
         
-        # If SSL is enabled, handle the SSL configuration for the subdomain
-        if [[ "$USE_SSL" == true ]]; then
-            log "Setting up SSL for monitor.$DOMAIN_NAME with Let's Encrypt..."
-            
-            # Ensure Certbot is installed for SSL
-            sudo apt-get install -y certbot python3-certbot-nginx || { error "Failed to install Certbot. Exiting."; }
-            
-            # Run Certbot to obtain SSL certificate for the subdomain
-            sudo certbot --nginx -d "monitor.$DOMAIN_NAME" --email "$SSL_EMAIL" --agree-tos --non-interactive || { error "Failed to obtain SSL certificate. Exiting."; }
-            log "SSL setup complete for monitor.$DOMAIN_NAME."
-        fi
+        # Setup SSL with Let's Encrypt
+        log "Setting up SSL for $DOMAIN_NAME with Let's Encrypt..."
+        sudo apt-get install -y certbot python3-certbot-nginx || { error "Failed to install Certbot. Exiting."; }
+        
+        # Run Certbot to obtain SSL certificate
+        sudo certbot --nginx -d "$DOMAIN_NAME" --email "$SSL_EMAIL" --agree-tos --non-interactive || { error "Failed to obtain SSL certificate. Exiting."; }
+        log "SSL setup complete for $DOMAIN_NAME."
+        
+        # Restart Nginx to apply SSL configuration
+        sudo systemctl restart nginx || { error "Failed to restart Nginx after SSL setup. Exiting."; }
+        
     else
-        warn "Domain name not provided. Nginx will not be configured with a domain."
+        log "No SSL configuration requested. Application will run directly on port $PORT."
     fi
 }
 
@@ -291,40 +315,41 @@ EOF
 # SSL
 # ------------------------
 check_ssl() {
-    if [[ -z "$DOMAIN_NAME" ]]; then
-        error "Domain name not set. SSL check cannot proceed."
+    if [[ -z "$DOMAIN_NAME" || "$USE_SSL" != true ]]; then
+        warn "SSL not configured or not requested. Skipping SSL check."
+        return 0
     fi
     
     # Check if SSL certificates are present
-    CERT_PATH="/etc/letsencrypt/live/monitor.$DOMAIN_NAME/fullchain.pem"
-    KEY_PATH="/etc/letsencrypt/live/monitor.$DOMAIN_NAME/privkey.pem"
+    CERT_PATH="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
+    KEY_PATH="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
     
     if [[ -f "$CERT_PATH" && -f "$KEY_PATH" ]]; then
-        log "SSL certificates found for monitor.$DOMAIN_NAME."
+        log "SSL certificates found for $DOMAIN_NAME."
     else
-        warn "SSL certificates not found for monitor.$DOMAIN_NAME. Please run certbot to obtain them."
+        warn "SSL certificates not found for $DOMAIN_NAME. Please run certbot to obtain them."
         return 1
     fi
     
     # Test SSL configuration with openssl
-    log "Testing SSL connectivity for monitor.$DOMAIN_NAME..."
-    ssl_test=$(openssl s_client -connect "monitor.$DOMAIN_NAME:443" -servername "monitor.$DOMAIN_NAME" </dev/null 2>/dev/null)
+    log "Testing SSL connectivity for $DOMAIN_NAME on port 81..."
+    ssl_test=$(openssl s_client -connect "$DOMAIN_NAME:81" -servername "$DOMAIN_NAME" </dev/null 2>/dev/null)
     
     if [[ $? -eq 0 ]]; then
-        log "SSL is properly configured for monitor.$DOMAIN_NAME."
+        log "SSL is properly configured for $DOMAIN_NAME on port 81."
     else
-        error "SSL configuration failed for monitor.$DOMAIN_NAME. Please check Nginx and Certbot configuration."
+        error "SSL configuration failed for $DOMAIN_NAME on port 81. Please check Nginx and Certbot configuration."
         return 1
     fi
     
     # Optionally, check with curl if the server is responding over HTTPS
     log "Verifying SSL response using curl..."
-    curl -s -o /dev/null -w "%{http_code}" "https://monitor.$DOMAIN_NAME" | grep -q "200"
+    curl -s -o /dev/null -w "%{http_code}" "https://$DOMAIN_NAME:81" | grep -q "200"
     
     if [[ $? -eq 0 ]]; then
-        log "Successfully connected to monitor.$DOMAIN_NAME over HTTPS."
+        log "Successfully connected to $DOMAIN_NAME over HTTPS on port 81."
     else
-        error "Failed to connect to monitor.$DOMAIN_NAME over HTTPS."
+        error "Failed to connect to $DOMAIN_NAME over HTTPS on port 81."
         return 1
     fi
 }
@@ -347,6 +372,7 @@ User=$USER_NAME
 Group=$USER_NAME
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$INSTALL_DIR/node_modules/.bin:/usr/bin
+EnvironmentFile=$CONFIG_FILE
 ExecStart=/usr/bin/env PORT=$PORT /usr/bin/pnpm start
 Restart=always
 RestartSec=3
@@ -390,18 +416,23 @@ main() {
     setup_environment || { error "Environment setup failed. Exiting."; }
     setup_database || { error "Database setup failed. Exiting."; }
     install_nginx || { error "Nginx installation and configuration failed. Exiting."; }
+    
     if [[ "$USE_SSL" == true ]]; then
         check_ssl || { error "SSL configuration failed. Exiting."; }
     fi
+    
     create_service || { error "Service creation failed. Exiting."; }
+    
     echo -e "${GREEN}Installation complete!${NC}"
     echo "Service status: $(systemctl is-active $SERVICE_NAME)"
     echo "Run logs with: journalctl -u $SERVICE_NAME -f"
-
+    
+    # Final output handling
     if [[ "$USE_SSL" == true ]]; then
-        echo "SSL enabled. Access at: https://$DOMAIN_NAME"
+        echo "SSL enabled. Access at: https://$DOMAIN_NAME:81"  # SSL URL
+        echo "Non-SSL access at: http://$(hostname -I | awk '{print $1}'):$PORT"  # Non-SSL URL with IP
     else
-        echo "Access the monitor at: http://$DOMAIN_NAME:81"
+        echo "Access the monitor at: http://$(hostname -I | awk '{print $1}'):$PORT"  # Default HTTP port
     fi
 }
 main
