@@ -2,10 +2,12 @@
 <br>
 <p align="center">A modern web interface for monitoring 3X-UI client usage statistics</p>
 
-![3X-UI Monitor](https://img.shields.io/badge/3X--UI-Monitor-blue?style=for-the-badge)
-![License](https://img.shields.io/badge/License-CC--BY--ND--4.0-lightgrey?style=for-the-badge)
-![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?style=for-the-badge)
-![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge)
+![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)
+![Next.js](https://img.shields.io/badge/next%20js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![shadcnui](https://img.shields.io/badge/shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white)
 
 ## Features
 
@@ -14,6 +16,11 @@
 * 🚀 **Modern UI**: Clean, responsive interface built with Tailwind CSS
 * 🔒 **Secure**: Rate limiting and input validation
 * 📱 **Mobile Friendly**: Responsive design that works on all devices
+
+## Screenshots
+
+![Home Screenshot](https://raw.githubusercontent.com/VikumKarunathilake/3x-ui-monitor/master/public/home.png)
+![Usage Statistics Screenshot](https://raw.githubusercontent.com/VikumKarunathilake/3x-ui-monitor/master/public/usage.png)
 
 ## Quick Installation
 
