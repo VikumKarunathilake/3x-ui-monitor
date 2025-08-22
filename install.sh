@@ -40,19 +40,19 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 get_user_input() {
     read -rp "Enter port number for 3X-UI Monitor (default: 3000): " input_port
     PORT=${input_port:-3000}
-
+    
     read -rp "Enter domain name (or press Enter to use IP): " input_domain
-    DOMAIN_NAME="$input_domain"
-
+    DOMAIN_NAME="${input_domain:-$(hostname -I | awk '{print $1}')}"
+    
     if [[ -n "$DOMAIN_NAME" ]]; then
         read -rp "Enable SSL with Let's Encrypt? (y/N): " ssl_choice
         [[ "$ssl_choice" =~ ^[Yy]$ ]] && USE_SSL=true && read -rp "Enter SSL email: " SSL_EMAIL
     fi
-
+    
     echo "Current database path: $DB_PATH"
     read -rp "Is this correct? (Y/n): " db_confirm
     [[ "$db_confirm" =~ ^[Nn]$ ]] && read -rp "Enter full path to x-ui.db: " custom_db && DB_PATH="$custom_db"
-
+    
     echo -e "${GREEN}\nSummary:\nPort: $PORT\nDatabase: $DB_PATH\nDomain: $DOMAIN_NAME\nSSL: $USE_SSL\nSSL Email: $SSL_EMAIL${NC}"
     read -rp "Press Enter to continue..."
 }
@@ -62,38 +62,89 @@ get_user_input() {
 # ------------------------
 check_dependencies() {
     log "Checking dependencies..."
-    for dep in curl sudo systemctl git make g++; do
-        command -v $dep >/dev/null 2>&1 || sudo apt-get install -y $dep
+    
+    # List of required dependencies
+    DEPENDENCIES=("curl" "sudo" "git")
+    
+    # Check if each dependency is installed
+    for dep in "${DEPENDENCIES[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            log "$dep is not installed. Installing..."
+            sudo apt-get install -y "$dep" || { error "Failed to install $dep. Exiting."; }
+        else
+            log "$dep is already installed."
+        fi
     done
 }
+
 
 # ------------------------
 # Node.js
 # ------------------------
 install_nodejs() {
     log "Installing Node.js 24..."
-    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-    sudo apt-get install -y nodejs build-essential
+    
+    # Check if curl is installed
+    if ! command -v curl &>/dev/null; then
+        error "curl is required for this step, but it's not installed. Exiting."
+    fi
+    
+    # Fetch Node.js setup script
+    log "Fetching Node.js setup script..."
+    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - || { error "Failed to fetch Node.js setup script. Exiting."; }
+    
+    # Install Node.js and build-essential
+    log "Installing Node.js and build-essential..."
+    sudo apt-get install -y nodejs build-essential || { error "Failed to install Node.js or build-essential. Exiting."; }
+    
+    # Verify Node.js installation
+    log "Verifying Node.js installation..."
+    node_version=$(node -v)
+    if [[ $? -eq 0 ]]; then
+        log "Node.js $node_version successfully installed."
+    else
+        error "Node.js installation failed. Exiting."
+    fi
 }
 
 # ------------------------
 # System user
 # ------------------------
 setup_user() {
-    id "$USER_NAME" &>/dev/null || sudo useradd --system --shell /bin/false --home-dir "$INSTALL_DIR" "$USER_NAME"
+    # Check if the user already exists
+    if id "$USER_NAME" &>/dev/null; then
+        log "User $USER_NAME already exists."
+    else
+        # Create system user with specific home directory and no shell access
+        log "Creating system user $USER_NAME..."
+        sudo useradd --system --shell /bin/false --home-dir "$INSTALL_DIR" "$USER_NAME" || { error "Failed to create user $USER_NAME. Exiting."; }
+        
+        # Ensure the user's home directory has the correct permissions
+        sudo chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR" || { error "Failed to set permissions for $USER_NAME's home directory. Exiting."; }
+    fi
 }
 
 # ------------------------
 # Clone repository
 # ------------------------
 clone_repository() {
+    # Ensure git is installed
+    if ! command -v git &>/dev/null; then
+        error "git is not installed. Exiting."
+    fi
+    
+    # Create the directory if it doesn't exist and set proper ownership
+    log "Setting up the repository directory..."
     sudo mkdir -p "$INSTALL_DIR"
-    sudo chown $USER:$USER "$INSTALL_DIR"
-
+    sudo chown "$USER:$USER" "$INSTALL_DIR"
+    
+    # Check if the directory is already a git repository
     if [[ -d "$INSTALL_DIR/.git" ]]; then
-        cd "$INSTALL_DIR" && git pull
+        log "Repository already exists. Pulling the latest changes..."
+        cd "$INSTALL_DIR" && git pull || { error "Failed to pull latest changes. Exiting."; }
     else
-        git clone "$REPO_URL" "$INSTALL_DIR"
+        log "Cloning the repository from $REPO_URL..."
+        git clone "$REPO_URL" "$INSTALL_DIR" || { error "Failed to clone repository. Exiting."; }
     fi
 }
 
@@ -101,45 +152,103 @@ clone_repository() {
 # Install npm packages
 # ------------------------
 install_dependencies() {
-    cd "$INSTALL_DIR"
-    npm install -g pnpm
-    pnpm install || error "pnpm install failed"  # <-- install ALL deps
-    pnpm run build || error "Build failed"
-    chmod +x node_modules/.bin/*
+    # Change to the install directory
+    cd "$INSTALL_DIR" || { error "Failed to enter directory $INSTALL_DIR. Exiting."; }
+    
+    # Check if npm is installed
+    if ! command -v npm &>/dev/null; then
+        error "npm is not installed. Please install npm and try again. Exiting."
+    fi
+    
+    # Install pnpm globally if not already installed
+    if ! command -v pnpm &>/dev/null; then
+        log "Installing pnpm globally..."
+        npm install -g pnpm || { error "Failed to install pnpm. Exiting."; }
+    else
+        log "pnpm is already installed globally."
+    fi
+    
+    # Install project dependencies using pnpm
+    log "Installing project dependencies..."
+    pnpm install || { error "pnpm install failed. Exiting."; }
+    
+    # Build the project
+    log "Building the project..."
+    pnpm run build || { error "Build failed. Exiting."; }
+    
+    # Ensure executable permissions for bin files in node_modules
+    log "Setting executable permissions for bin files..."
+    chmod +x node_modules/.bin/* || { error "Failed to set permissions for node_modules/.bin. Exiting."; }
+    
+    log "Dependencies installed and build completed successfully."
 }
 
 # ------------------------
 # Environment file
 # ------------------------
 setup_environment() {
+    log "Creating environment configuration file at $CONFIG_FILE..."
+    
+    # Check if necessary variables are set
+    if [[ -z "$PORT" || -z "$DB_PATH" || -z "$USER_NAME" ]]; then
+        error "Required environment variables (PORT, DB_PATH, USER_NAME) are not set. Exiting."
+    fi
+    
+    # Create the environment configuration file
     cat > "$CONFIG_FILE" << EOF
 PORT=$PORT
 DB_PATH=$DB_PATH
 NODE_ENV=production
 EOF
-    chown "$USER_NAME:$USER_NAME" "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
+    
+    # Ensure correct ownership and permissions
+    log "Setting ownership and permissions for the configuration file..."
+    sudo chown "$USER_NAME:$USER_NAME" "$CONFIG_FILE" || { error "Failed to set ownership for $CONFIG_FILE. Exiting."; }
+    sudo chmod 600 "$CONFIG_FILE" || { error "Failed to set permissions for $CONFIG_FILE. Exiting."; }
+    
+    log "Environment configuration file created successfully at $CONFIG_FILE."
 }
 
 # ------------------------
 # Database permissions
 # ------------------------
 setup_database() {
+    # Create the directory if it doesn't exist
     sudo mkdir -p "$(dirname $DB_PATH)"
     sudo chown -R "$USER_NAME:$USER_NAME" "$(dirname $DB_PATH)"
-    [[ -f "$DB_PATH" ]] && chmod 644 "$DB_PATH"
+    
+    # Give all permissions (read, write, and execute) to the directory
+    sudo chmod 777 "$(dirname $DB_PATH)" || { error "Failed to set permissions for the database directory. Exiting."; }
+    
+    # Give all permissions to the database file if it exists
+    if [[ -f "$DB_PATH" ]]; then
+        sudo chmod 777 "$DB_PATH" || { error "Failed to set permissions for $DB_PATH. Exiting."; }
+    fi
+    
+    log "Database directory and file permissions set to 777."
 }
 
 # ------------------------
 # Nginx
 # ------------------------
 install_nginx() {
-    [[ -z "$DOMAIN_NAME" ]] && return
-    sudo apt-get install -y nginx
-    cat > "$NGINX_CONF" << EOF
+    # Check if Nginx is already installed
+    if ! command -v nginx &>/dev/null; then
+        log "Installing Nginx..."
+        sudo apt-get install -y nginx || { error "Failed to install Nginx. Exiting."; }
+    else
+        log "Nginx is already installed."
+    fi
+    
+    # Configure Nginx for reverse proxy to monitor using subdomain (e.g., monitor.yourdomain.com)
+    if [[ -n "$DOMAIN_NAME" ]]; then
+        log "Setting up Nginx configuration for subdomain monitor.$DOMAIN_NAME..."
+        
+        # Configure Nginx for reverse proxy to monitor without path on subdomain
+        cat > "$NGINX_CONF" << EOF
 server {
-    listen $PORT;
-    server_name $DOMAIN_NAME;
+    listen 81;
+    server_name monitor.$DOMAIN_NAME;
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
@@ -154,26 +263,79 @@ server {
     }
 }
 EOF
-    sudo ln -sf "$NGINX_CONF" "$NGINX_ENABLED_CONF"
-    sudo nginx -t
-    sudo systemctl restart nginx
-    sudo systemctl enable nginx
-    log "Nginx is now running on port $PORT for $DOMAIN_NAME"
+        
+        # Enable the site and restart Nginx
+        sudo ln -sf "$NGINX_CONF" "$NGINX_ENABLED_CONF" || { error "Failed to create Nginx symlink. Exiting."; }
+        sudo nginx -t || { error "Nginx configuration test failed. Exiting."; }
+        sudo systemctl restart nginx || { error "Failed to restart Nginx. Exiting."; }
+        sudo systemctl enable nginx || { error "Failed to enable Nginx service. Exiting."; }
+        log "Nginx is now running on port for monitor.$DOMAIN_NAME."
+        
+        # If SSL is enabled, handle the SSL configuration for the subdomain
+        if [[ "$USE_SSL" == true ]]; then
+            log "Setting up SSL for monitor.$DOMAIN_NAME with Let's Encrypt..."
+            
+            # Ensure Certbot is installed for SSL
+            sudo apt-get install -y certbot python3-certbot-nginx || { error "Failed to install Certbot. Exiting."; }
+            
+            # Run Certbot to obtain SSL certificate for the subdomain
+            sudo certbot --nginx -d "monitor.$DOMAIN_NAME" --email "$SSL_EMAIL" --agree-tos --non-interactive || { error "Failed to obtain SSL certificate. Exiting."; }
+            log "SSL setup complete for monitor.$DOMAIN_NAME."
+        fi
+    else
+        warn "Domain name not provided. Nginx will not be configured with a domain."
+    fi
 }
 
 # ------------------------
 # SSL
 # ------------------------
-setup_ssl() {
-    [[ "$USE_SSL" != true ]] && return
-    sudo apt-get install -y certbot python3-certbot-nginx
-    sudo certbot --nginx -d "$DOMAIN_NAME" --email "$SSL_EMAIL" --agree-tos --non-interactive
+check_ssl() {
+    if [[ -z "$DOMAIN_NAME" ]]; then
+        error "Domain name not set. SSL check cannot proceed."
+    fi
+    
+    # Check if SSL certificates are present
+    CERT_PATH="/etc/letsencrypt/live/monitor.$DOMAIN_NAME/fullchain.pem"
+    KEY_PATH="/etc/letsencrypt/live/monitor.$DOMAIN_NAME/privkey.pem"
+    
+    if [[ -f "$CERT_PATH" && -f "$KEY_PATH" ]]; then
+        log "SSL certificates found for monitor.$DOMAIN_NAME."
+    else
+        warn "SSL certificates not found for monitor.$DOMAIN_NAME. Please run certbot to obtain them."
+        return 1
+    fi
+    
+    # Test SSL configuration with openssl
+    log "Testing SSL connectivity for monitor.$DOMAIN_NAME..."
+    ssl_test=$(openssl s_client -connect "monitor.$DOMAIN_NAME:443" -servername "monitor.$DOMAIN_NAME" </dev/null 2>/dev/null)
+    
+    if [[ $? -eq 0 ]]; then
+        log "SSL is properly configured for monitor.$DOMAIN_NAME."
+    else
+        error "SSL configuration failed for monitor.$DOMAIN_NAME. Please check Nginx and Certbot configuration."
+        return 1
+    fi
+    
+    # Optionally, check with curl if the server is responding over HTTPS
+    log "Verifying SSL response using curl..."
+    curl -s -o /dev/null -w "%{http_code}" "https://monitor.$DOMAIN_NAME" | grep -q "200"
+    
+    if [[ $? -eq 0 ]]; then
+        log "Successfully connected to monitor.$DOMAIN_NAME over HTTPS."
+    else
+        error "Failed to connect to monitor.$DOMAIN_NAME over HTTPS."
+        return 1
+    fi
 }
 
 # ------------------------
 # Systemd service
 # ------------------------
 create_service() {
+    log "Creating systemd service for 3X-UI Monitor..."
+    
+    # Create the service file
     cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOF
 [Unit]
 Description=3X-UI Monitor Service
@@ -196,33 +358,50 @@ ProtectHome=yes
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    systemctl daemon-reload
-    systemctl enable "$SERVICE_NAME"
-    systemctl start "$SERVICE_NAME"
+    
+    # Set appropriate permissions for the service file
+    sudo chmod 644 "/etc/systemd/system/$SERVICE_NAME.service" || { error "Failed to set permissions for service file. Exiting."; }
+    
+    # Reload systemd to apply the new service file
+    log "Reloading systemd daemon..."
+    sudo systemctl daemon-reload || { error "Failed to reload systemd. Exiting."; }
+    
+    # Enable the service to start on boot
+    log "Enabling service $SERVICE_NAME to start on boot..."
+    sudo systemctl enable "$SERVICE_NAME" || { error "Failed to enable service $SERVICE_NAME. Exiting."; }
+    
+    # Start the service
+    log "Starting the 3X-UI Monitor service..."
+    sudo systemctl start "$SERVICE_NAME" || { error "Failed to start service $SERVICE_NAME. Exiting."; }
+    
+    log "Service $SERVICE_NAME created and started successfully."
 }
 
 # ------------------------
 # Run installation
 # ------------------------
 main() {
-    get_user_input
-    check_dependencies
-    install_nodejs
-    setup_user
-    clone_repository
-    install_dependencies
-    setup_environment
-    setup_database
-    install_nginx
-    setup_ssl
-    create_service
-
+    get_user_input || { error "User input failed. Exiting."; }
+    check_dependencies || { error "Dependency check failed. Exiting."; }
+    install_nodejs || { error "Node.js installation failed. Exiting."; }
+    setup_user || { error "User setup failed. Exiting."; }
+    clone_repository || { error "Repository cloning failed. Exiting."; }
+    install_dependencies || { error "Dependency installation failed. Exiting."; }
+    setup_environment || { error "Environment setup failed. Exiting."; }
+    setup_database || { error "Database setup failed. Exiting."; }
+    install_nginx || { error "Nginx installation and configuration failed. Exiting."; }
+    if [[ "$USE_SSL" == true ]]; then
+        check_ssl || { error "SSL configuration failed. Exiting."; }
+    fi
+    create_service || { error "Service creation failed. Exiting."; }
     echo -e "${GREEN}Installation complete!${NC}"
     echo "Service status: $(systemctl is-active $SERVICE_NAME)"
     echo "Run logs with: journalctl -u $SERVICE_NAME -f"
-    echo "Access the monitor at: http://$DOMAIN_NAME:$PORT"
-    [[ "$USE_SSL" == true ]] && echo "SSL enabled. Access at: https://$DOMAIN_NAME"
-}
 
+    if [[ "$USE_SSL" == true ]]; then
+        echo "SSL enabled. Access at: https://$DOMAIN_NAME"
+    else
+        echo "Access the monitor at: http://$DOMAIN_NAME:81"
+    fi
+}
 main

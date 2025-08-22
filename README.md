@@ -14,7 +14,6 @@ A modern web interface for monitoring 3X-UI client usage statistics. Built with 
 - 🚀 **Modern UI**: Clean, responsive interface built with Tailwind CSS
 - 🔒 **Secure**: Rate limiting and input validation
 - 📱 **Mobile Friendly**: Responsive design that works on all devices
-- ⚡ **Fast**: Built with Next.js for optimal performance
 
 ## Quick Installation
 
@@ -25,7 +24,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/VikumKarunathilake/3x-ui-monit
 ```
 
 The installation script will:
-- Install Node.js 18+
+
+- Install Node.js
 - Set up a systemd service
 - Configure proper permissions
 - Start the 3X-UI Monitor service
@@ -42,68 +42,30 @@ The installation script will:
    - Remaining data
    - Account status and expiry
 
-## API Endpoint
-
-The application provides a REST API endpoint:
-
-### POST `/api`
-
-**Request:**
-```json
-{
-  "clientId": "uuid-string-here"
-}
-```
-
-**Response:**
-```json
-{
-  "traffic_id": 1,
-  "email": "client@example.com",
-  "inbound_id": 1,
-  "client_id": "uuid-string",
-  "enable": 1,
-  "expiry_time": "30d 5h 12m 3s",
-  "upGB": "12.45",
-  "downGB": "45.67",
-  "totalGB": "100.00"
-}
-```
-
 ## Systemd Service
 
 The installation creates a systemd service for easy management:
 
 **Start service:**
+
 ```bash
 sudo systemctl start 3x-ui-monitor
 ```
 
 **Stop service:**
+
 ```bash
 sudo systemctl stop 3x-ui-monitor
 ```
 
 **Check status:**
+
 ```bash
 sudo systemctl status 3x-ui-monitor
 ```
 
 **View logs:**
-```bash
-journalctl -u 3x-ui-monitor -f
-```
 
-## Security Features
-
-- Rate limiting (100 requests per second per IP)
-- SQL injection prevention with parameterized queries
-- Input validation for UUID and config formats
-- Secure database handling
-
-### Logs
-
-Check service logs for detailed error information:
 ```bash
 journalctl -u 3x-ui-monitor -f
 ```
@@ -131,14 +93,5 @@ If you find this project useful, please consider giving it a star ⭐ on GitHub!
 ## Stargazers over time
 
 [![Stargazers over time](https://starchart.cc/VikumKarunathilake/3x-ui-monitor.svg?variant=adaptive)](https://starchart.cc/VikumKarunathilake/3x-ui-monitor)
-
-## Acknowledgments
-
-- Built with [Next.js](https://nextjs.org/)
-- UI components with [Tailwind CSS](https://tailwindcss.com/)
-- Icons by [Lucide](https://lucide.dev/)
-- Database access with [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
-
----
 
 **Disclaimer**: This project is not affiliated with the official 3X-UI project. It is a third-party monitoring interface.
