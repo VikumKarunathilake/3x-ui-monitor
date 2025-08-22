@@ -1,6 +1,6 @@
-# 3X-UI Monitor
-
-A modern web interface for monitoring 3X-UI client usage statistics. Built with Next.js, TypeScript, and Tailwind CSS.
+<h1 align="center">3X-UI Monitor</h1>
+<br>
+<p align="center">A modern web interface for monitoring 3X-UI client usage statistics</p>
 
 ![3X-UI Monitor](https://img.shields.io/badge/3X--UI-Monitor-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-CC--BY--ND--4.0-lightgrey?style=for-the-badge)
@@ -9,11 +9,11 @@ A modern web interface for monitoring 3X-UI client usage statistics. Built with 
 
 ## Features
 
-- 📊 **Real-time Usage Monitoring**: View upload, download, and total usage statistics
-- 🎯 **Client Identification**: Support for both UUID and V2Ray config URLs
-- 🚀 **Modern UI**: Clean, responsive interface built with Tailwind CSS
-- 🔒 **Secure**: Rate limiting and input validation
-- 📱 **Mobile Friendly**: Responsive design that works on all devices
+* 📊 **Real-time Usage Monitoring**: View upload, download, and total usage statistics
+* 🎯 **Client Identification**: Supports **_VLESS protocol only_** (UUID and V2Ray config URLs)
+* 🚀 **Modern UI**: Clean, responsive interface built with Tailwind CSS
+* 🔒 **Secure**: Rate limiting and input validation
+* 📱 **Mobile Friendly**: Responsive design that works on all devices
 
 ## Quick Installation
 
@@ -25,22 +25,26 @@ bash <(curl -Ls https://raw.githubusercontent.com/VikumKarunathilake/3x-ui-monit
 
 The installation script will:
 
-- Install Node.js
-- Set up a systemd service
-- Configure proper permissions
-- Start the 3X-UI Monitor service
-  
+* Install Node.js
+* Set up a systemd service
+* Configure proper permissions
+* Start the 3X-UI Monitor service
+
 ## Usage
 
 1. **Open the application** in your web browser
 2. **Enter your client information**:
-   - UUID (e.g., `12345678-1234-1234-1234-123456789012`)
-   - V2Ray config URL (e.g., `vless://uuid@domain.com:443?security=tls`)
+   * VLESS protocol only
+   * UUID (e.g., `12345678-1234-1234-1234-123456789012`)
+   * V2Ray config URL (e.g., `vless://uuid@domain.com:443?security=tls`)
 3. **View usage statistics** including:
-   - Upload/Download traffic
-   - Total data allowance
-   - Remaining data
-   - Account status and expiry
+
+   * Upload/Download traffic
+   * Total data allowance
+   * Remaining data
+   * Account status and expiry
+
+**Note**: This tool is designed to work only with the **VLESS** protocol.
 
 ## Systemd Service
 
@@ -74,9 +78,9 @@ journalctl -u 3x-ui-monitor -f
 
 This project is licensed under Creative Commons Attribution-NoDerivs (CC-BY-ND). This means:
 
-- ✅ You can use and redistribute this software
-- ✅ You must give appropriate credit to the original author
-- ❌ You cannot distribute modified versions without permission
+* ✅ You can use and redistribute this software
+* ✅ You must give appropriate credit to the original author
+* ❌ You cannot distribute modified versions without permission
 
 For modification requests, please contact the maintainer.
 
