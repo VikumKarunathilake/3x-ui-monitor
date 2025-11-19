@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ export default function UsagePage() {
     const [error, setError] = useState<string | null>(null)
     const [isRefreshing, setIsRefreshing] = useState(false)
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             if (loadingState !== 'initial') {
                 setIsRefreshing(true)
@@ -71,13 +71,13 @@ export default function UsagePage() {
             setIsRefreshing(false)
             toast.error('Failed to fetch client data')
         }
-    }
+    }, [clientId, loadingState])
 
     useEffect(() => {
         if (clientId && loadingState === 'initial') {
             fetchData()
         }
-    }, [clientId, loadingState])
+    }, [clientId, loadingState, fetchData])
 
     const handleRefresh = () => {
         fetchData()

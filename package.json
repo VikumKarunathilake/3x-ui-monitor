@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "docker:build": "docker build -t 3x-ui-monitor .",
+    "docker:run": "docker run -p 3000:3000 3x-ui-monitor"
   },
   "dependencies": {
     "@radix-ui/react-progress": "^1.1.7",
@@ -16,7 +18,6 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.540.0",
     "next": "15.5.0",
-    "rate-limiter-flexible": "^7.2.0",
     "react": "19.1.1",
     "react-circular-progressbar": "^2.2.0",
     "react-dom": "19.1.1",

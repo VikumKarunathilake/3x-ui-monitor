@@ -1,8 +1,7 @@
 // route.ts
 import { type NextRequest, NextResponse } from "next/server"
 import Database from "better-sqlite3"
-import path from "path"
-import { RateLimiterMemory } from "rate-limiter-flexible"
+
 import { validate as uuidValidate } from "uuid"
 
 interface Client {
@@ -27,19 +26,26 @@ interface InboundSettings {
   clients?: Client[]
 }
 
-// Rate limiting configuration (100 requests per second)
-const rateLimiter = new RateLimiterMemory({
-  points: 100, // 100 requests
-  duration: 1, // per 1 second
-})
+
 
 // Database connection management (singleton pattern)
 let db: Database.Database | null = null
 
 function getDatabase(): Database.Database {
   if (!db) {
-    // Update the path to the new location
-    const dbPath = "/etc/x-ui/x-ui.db"
+    // Try multiple possible database locations
+    const possiblePaths = [
+      "/etc/x-ui/x-ui.db",
+      "./data/x-ui.db",
+      process.env.DATABASE_PATH || "/etc/x-ui/x-ui.db"
+    ]
+    
+    let dbPath = possiblePaths[0]
+    // In development, use local data directory
+    if (process.env.NODE_ENV === 'development') {
+      dbPath = "./data/x-ui.db"
+    }
+    
     db = new Database(dbPath, { readonly: false })
     
     // Enable WAL mode for better concurrency
@@ -66,29 +72,13 @@ function formatExpiry(expiry: number): string {
   return `${days}d ${hours}h ${minutes}m ${seconds}s`
 }
 
-// Response headers for CORS
 const responseHeaders = {
-  'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Content-Type': 'application/json'
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // Rate limiting check using IP address
-    const ip = req.headers.get('x-real-ip') || req.headers.get('x-forwarded-for') || 'unknown'
-    try {
-      await rateLimiter.consume(ip)
-    } catch {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { 
-          status: 429,
-          headers: responseHeaders
-        }
-      )
-    }
+
 
     // Only accept POST requests
     if (req.method !== 'POST') {
@@ -230,16 +220,3 @@ export async function GET() {
   )
 }
 
-// Handle OPTIONS requests for CORS
-export async function OPTIONS() {
-  return NextResponse.json(
-    {}, 
-    {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      }
-    }
-  )
-}
