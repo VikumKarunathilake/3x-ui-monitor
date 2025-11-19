@@ -1,138 +1,117 @@
 // route.ts
-import { type NextRequest, NextResponse } from "next/server"
-import Database from "better-sqlite3"
+import { type NextRequest, NextResponse } from "next/server";
+import Database from "better-sqlite3";
 
-import { validate as uuidValidate } from "uuid"
+import { validate as uuidValidate } from "uuid";
 
 interface Client {
-  id: string
-  email: string
-  [key: string]: unknown // optional extra fields
+  id: string;
+  email: string;
+  [key: string]: unknown; // optional extra fields
 }
 
 interface ClientTrafficData {
-  traffic_id: number
-  email: string
-  inbound_id: number
-  up: number
-  down: number
-  total: number
-  expiry_time: number
-  enable: number
-  inbound_settings: string
+  traffic_id: number;
+  email: string;
+  inbound_id: number;
+  up: number;
+  down: number;
+  total: number;
+  expiry_time: number;
+  enable: number;
+  inbound_settings: string;
 }
 
 interface InboundSettings {
-  clients?: Client[]
+  clients?: Client[];
 }
 
-
-
 // Database connection management (singleton pattern)
-let db: Database.Database | null = null
+let db: Database.Database | null = null;
 
 function getDatabase(): Database.Database {
   if (!db) {
     // Try multiple possible database locations
-    const possiblePaths = [
-      process.env.DATABASE_PATH,
-      "/var/lib/x-ui/x-ui.db",
-      "/opt/x-ui/x-ui.db",
-      "./x-ui.db",
-      "./data/x-ui.db"
-    ].filter(Boolean)
-    
-    let dbPath: string | null = null
-    
-    // Try each path until we find one that works
-    for (const path of possiblePaths) {
-      try {
-        const testDb = new Database(path as string, { readonly: true })
-        testDb.close()
-        dbPath = path as string
-        break
-      } catch (err) {
-        console.log(`Cannot access database at ${path}:`, (err as Error).message)
-        continue
-      }
-    }
-    
+    // databse const dbPath = "/etc/x-ui/x-ui.db"
+
+    const dbPath = "/etc/x-ui/x-ui.db";
+
     if (!dbPath) {
-      throw new Error('No accessible database found. Please set DATABASE_PATH environment variable or ensure x-ui.db is accessible.')
+      throw new Error(
+        "No accessible database found. Please set database path or ensure x-ui.db is accessible."
+      );
     }
-    
-    db = new Database(dbPath, { readonly: true })
-    
+
+    db = new Database(dbPath, { readonly: true });
+
     // Enable WAL mode for better concurrency
-    db.pragma("journal_mode = WAL")
-    
+    db.pragma("journal_mode = WAL");
+
     // Enable foreign key constraints
-    db.pragma("foreign_keys = ON")
+    db.pragma("foreign_keys = ON");
   }
-  return db
+  return db;
 }
 
 function formatExpiry(expiry: number): string {
-  if (expiry === 0) return "∞"
-  const now = Date.now()
-  const remaining = expiry - now
+  if (expiry === 0) return "∞";
+  const now = Date.now();
+  const remaining = expiry - now;
 
-  if (remaining <= 0) return "Expired"
+  if (remaining <= 0) return "Expired";
 
-  const days = Math.floor(remaining / (1000 * 60 * 60 * 24))
-  const hours = Math.floor((remaining / (1000 * 60 * 60)) % 24)
-  const minutes = Math.floor((remaining / (1000 * 60)) % 60)
-  const seconds = Math.floor((remaining / 1000) % 60)
+  const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((remaining / (1000 * 60 * 60)) % 24);
+  const minutes = Math.floor((remaining / (1000 * 60)) % 60);
+  const seconds = Math.floor((remaining / 1000) % 60);
 
-  return `${days}d ${hours}h ${minutes}m ${seconds}s`
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`;
 }
 
 const responseHeaders = {
-  'Content-Type': 'application/json'
-}
+  "Content-Type": "application/json",
+};
 
 export async function POST(req: NextRequest) {
   try {
-
-
     // Only accept POST requests
-    if (req.method !== 'POST') {
+    if (req.method !== "POST") {
       return NextResponse.json(
-        { error: 'Method not allowed' }, 
-        { 
+        { error: "Method not allowed" },
+        {
           status: 405,
-          headers: responseHeaders
+          headers: responseHeaders,
         }
-      )
+      );
     }
 
     // Get clientId from request body
-    const { clientId } = await req.json()
-    
+    const { clientId } = await req.json();
+
     // Input validation
     if (!clientId) {
       return NextResponse.json(
-        { error: 'Client ID is required' }, 
-        { 
+        { error: "Client ID is required" },
+        {
           status: 400,
-          headers: responseHeaders
+          headers: responseHeaders,
         }
-      )
+      );
     }
 
     // Validate UUID format
     if (!uuidValidate(clientId)) {
       return NextResponse.json(
-        { error: 'Invalid Client ID format' }, 
-        { 
+        { error: "Invalid Client ID format" },
+        {
           status: 400,
-          headers: responseHeaders
+          headers: responseHeaders,
         }
-      )
+      );
     }
 
     // Get database instance
-    const db = getDatabase()
+    const db = getDatabase();
 
     // Prepare statement to find client by ID in JSON settings
     // This query joins client_traffics with inbounds and uses JSON functions to search
@@ -155,32 +134,38 @@ export async function POST(req: NextRequest) {
         AND json_extract(value, '$.email') = ct.email
       )
       LIMIT 1
-    `)
+    `);
 
     // Execute query with parameter binding to prevent SQL injection
-    const clientData = clientQuery.get(clientId) as ClientTrafficData | undefined
+    const clientData = clientQuery.get(clientId) as
+      | ClientTrafficData
+      | undefined;
 
     if (!clientData) {
       return NextResponse.json(
-        { error: "Client not found" }, 
-        { 
+        { error: "Client not found" },
+        {
           status: 404,
-          headers: responseHeaders
+          headers: responseHeaders,
         }
-      )
+      );
     }
 
     // Extract client_id from settings
-    let clientIdFromSettings: string | null = null
+    let clientIdFromSettings: string | null = null;
     try {
-      const settings = JSON.parse(clientData.inbound_settings) as InboundSettings
+      const settings = JSON.parse(
+        clientData.inbound_settings
+      ) as InboundSettings;
 
       if (Array.isArray(settings.clients)) {
-        const match = settings.clients.find((c: Client) => c.email === clientData.email)
-        if (match) clientIdFromSettings = match.id
+        const match = settings.clients.find(
+          (c: Client) => c.email === clientData.email
+        );
+        if (match) clientIdFromSettings = match.id;
       }
     } catch (err) {
-      console.error("Error parsing inbound settings:", err)
+      console.error("Error parsing inbound settings:", err);
       // Continue even if parsing fails - we'll just have null for clientIdFromSettings
     }
 
@@ -195,43 +180,42 @@ export async function POST(req: NextRequest) {
       upGB: (clientData.up / 1024 / 1024 / 1024).toFixed(2),
       downGB: (clientData.down / 1024 / 1024 / 1024).toFixed(2),
       totalGB: (clientData.total / 1024 / 1024 / 1024).toFixed(2),
-    }
+    };
 
-    return NextResponse.json(result, { headers: responseHeaders })
+    return NextResponse.json(result, { headers: responseHeaders });
   } catch (err) {
-    console.error('Database error:', err)
-    
+    console.error("Database error:", err);
+
     // Handle specific database errors
     if (err instanceof Error) {
-      if (err.message.includes('SQLITE_')) {
+      if (err.message.includes("SQLITE_")) {
         return NextResponse.json(
-          { error: "Database error occurred" }, 
-          { 
+          { error: "Database error occurred" },
+          {
             status: 500,
-            headers: responseHeaders
+            headers: responseHeaders,
           }
-        )
+        );
       }
     }
-    
+
     return NextResponse.json(
-      { error: "Failed to fetch data" }, 
-      { 
+      { error: "Failed to fetch data" },
+      {
         status: 500,
-        headers: responseHeaders
+        headers: responseHeaders,
       }
-    )
+    );
   }
 }
 
 // Add this to explicitly reject other methods
 export async function GET() {
   return NextResponse.json(
-    { error: 'Method not allowed' }, 
-    { 
+    { error: "Method not allowed" },
+    {
       status: 405,
-      headers: responseHeaders
+      headers: responseHeaders,
     }
-  )
+  );
 }
-

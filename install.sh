@@ -21,8 +21,8 @@ echo -e "${BLUE}╚════════════════════�
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
-   echo -e "${RED}❌ Don't run this script as root${NC}"
-   exit 1
+    echo -e "${RED}❌ Don't run this script as root${NC}"
+    exit 1
 fi
 
 # Get user input
@@ -43,23 +43,25 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     git pull origin main
 else
     git clone https://github.com/VikumKarunathilake/3x-ui-monitor.git $INSTALL_DIR
-        cd $INSTALL_DIR
-    fi
-    
-    echo -e "${YELLOW}🛠️ Installing Node.js...${NC}"
-    # Install Node.js (if not already installed)
-    if ! command -v node &> /dev/null; then
-        echo -e "${YELLOW}Installing Node.js...${NC}"
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-        echo -e "${GREEN}✅ Node.js installed${NC}"
-    else
-        echo -e "${GREEN}✅ Node.js already installed${NC}"
-    fi    
-    echo -e "${YELLOW}🔨 Building and starting application...${NC}"
+    cd $INSTALL_DIR
+fi
+
+echo -e "${YELLOW}🛠️ Installing Node.js...${NC}"
+# Install Node.js (if not already installed)
+if ! command -v node &> /dev/null; then
+    echo -e "${YELLOW}Installing Node.js...${NC}"
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    echo -e "${GREEN}✅ Node.js installed${NC}"
+else
+    echo -e "${GREEN}✅ Node.js already installed${NC}"
+fi
+echo -e "${YELLOW}⚙️ Installing application dependencies...${NC}"
 cd $INSTALL_DIR
 npm install
+echo -e "${YELLOW}⚙️ Building application...${NC}"
 npm run build
+echo -e "${YELLOW}🚀 Starting application...${NC}"
 nohup npm start > app.log 2>&1 &
 echo $! > app.pid
 echo -e "${GREEN}✅ Application started${NC}"
