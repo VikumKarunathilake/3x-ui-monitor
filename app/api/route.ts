@@ -35,18 +35,33 @@ function getDatabase(): Database.Database {
   if (!db) {
     // Try multiple possible database locations
     const possiblePaths = [
-      "/etc/x-ui/x-ui.db",
-      "./data/x-ui.db",
-      process.env.DATABASE_PATH || "/etc/x-ui/x-ui.db"
-    ]
+      process.env.DATABASE_PATH,
+      "/var/lib/x-ui/x-ui.db",
+      "/opt/x-ui/x-ui.db",
+      "./x-ui.db",
+      "./data/x-ui.db"
+    ].filter(Boolean)
     
-    let dbPath = possiblePaths[0]
-    // In development, use local data directory
-    if (process.env.NODE_ENV === 'development') {
-      dbPath = "./data/x-ui.db"
+    let dbPath: string | null = null
+    
+    // Try each path until we find one that works
+    for (const path of possiblePaths) {
+      try {
+        const testDb = new Database(path as string, { readonly: true })
+        testDb.close()
+        dbPath = path as string
+        break
+      } catch (err) {
+        console.log(`Cannot access database at ${path}:`, (err as Error).message)
+        continue
+      }
     }
     
-    db = new Database(dbPath, { readonly: false })
+    if (!dbPath) {
+      throw new Error('No accessible database found. Please set DATABASE_PATH environment variable or ensure x-ui.db is accessible.')
+    }
+    
+    db = new Database(dbPath, { readonly: true })
     
     // Enable WAL mode for better concurrency
     db.pragma("journal_mode = WAL")

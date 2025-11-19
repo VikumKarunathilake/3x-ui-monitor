@@ -161,6 +161,7 @@ echo -e "   ${BLUE}3x-ui-monitor restart${NC} - Restart application"
 echo -e "   ${BLUE}3x-ui-monitor logs${NC}    - View logs"
 echo -e "   ${BLUE}3x-ui-monitor update${NC}  - Update to latest version"
 echo -e "   ${BLUE}3x-ui-monitor status${NC}  - Check status"
+echo -e "${RED}🗑️ To uninstall: ${NC}${BLUE}bash $INSTALL_DIR/uninstall.sh${NC}"
 
 if [ ! -z "$DOMAIN" ]; then
     echo -e "${GREEN}🔒 SSL certificate will auto-renew every 90 days${NC}"
