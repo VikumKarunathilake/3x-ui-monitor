@@ -31,16 +31,7 @@ if [ ! -z "$DOMAIN" ]; then
     read -p "Enter your email for SSL certificate: " EMAIL
 fi
 
-echo -e "${YELLOW}📦 Installing Docker...${NC}"
-if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    sudo usermod -aG docker $USER
-    rm get-docker.sh
-    echo -e "${GREEN}✅ Docker installed${NC}"
-else
-    echo -e "${GREEN}✅ Docker already installed${NC}"
-fi
+
 
 echo -e "${YELLOW}📁 Setting up application directory...${NC}"
 sudo mkdir -p $INSTALL_DIR
@@ -52,16 +43,26 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     git pull origin main
 else
     git clone https://github.com/VikumKarunathilake/3x-ui-monitor.git $INSTALL_DIR
-    cd $INSTALL_DIR
-fi
-
-echo -e "${YELLOW}🔨 Building and starting application...${NC}"
-docker stop $APP_NAME 2>/dev/null || true
-docker rm $APP_NAME 2>/dev/null || true
-docker build -t $APP_NAME .
-docker run -d --name $APP_NAME -p $APP_PORT:3000 --restart unless-stopped $APP_NAME
-
-# Setup SSL if domain provided
+        cd $INSTALL_DIR
+    fi
+    
+    echo -e "${YELLOW}🛠️ Installing Node.js...${NC}"
+    # Install Node.js (if not already installed)
+    if ! command -v node &> /dev/null; then
+        echo -e "${YELLOW}Installing Node.js...${NC}"
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        echo -e "${GREEN}✅ Node.js installed${NC}"
+    else
+        echo -e "${GREEN}✅ Node.js already installed${NC}"
+    fi    
+    echo -e "${YELLOW}🔨 Building and starting application...${NC}"
+cd $INSTALL_DIR
+npm install
+npm run build
+nohup npm start > app.log 2>&1 &
+echo $! > app.pid
+echo -e "${GREEN}✅ Application started${NC}"
 if [ ! -z "$DOMAIN" ]; then
     echo -e "${YELLOW}🔒 Setting up SSL...${NC}"
     
@@ -112,34 +113,66 @@ fi
 cat > $INSTALL_DIR/manage.sh << 'EOF'
 #!/bin/bash
 APP_NAME="3x-ui-monitor"
+INSTALL_DIR="/opt/$APP_NAME"
 
 case "$1" in
     start)
-        docker start $APP_NAME
-        echo "✅ Started $APP_NAME"
+        if [ -f "$INSTALL_DIR/app.pid" ] && kill -0 $(cat "$INSTALL_DIR/app.pid") 2>/dev/null; then
+            echo "✅ $APP_NAME is already running."
+        else
+            cd $INSTALL_DIR
+            nohup npm start > app.log 2>&1 &
+            echo $! > app.pid
+            echo "✅ Started $APP_NAME"
+        fi
         ;;
     stop)
-        docker stop $APP_NAME
-        echo "🛑 Stopped $APP_NAME"
+        if [ -f "$INSTALL_DIR/app.pid" ] && kill -0 $(cat "$INSTALL_DIR/app.pid") 2>/dev/null; then
+            kill $(cat "$INSTALL_DIR/app.pid")
+            rm "$INSTALL_DIR/app.pid"
+            echo "🛑 Stopped $APP_NAME"
+        else
+            echo "❌ $APP_NAME is not running."
+        fi
         ;;
     restart)
-        docker restart $APP_NAME
+        if [ -f "$INSTALL_DIR/app.pid" ] && kill -0 $(cat "$INSTALL_DIR/app.pid") 2>/dev/null; then
+            kill $(cat "$INSTALL_DIR/app.pid")
+            rm "$INSTALL_DIR/app.pid"
+            echo "🛑 Stopped $APP_NAME for restart"
+        fi
+        cd $INSTALL_DIR
+        nohup npm start > app.log 2>&1 &
+        echo $! > app.pid
         echo "🔄 Restarted $APP_NAME"
         ;;
     logs)
-        docker logs -f $APP_NAME
+        if [ -f "$INSTALL_DIR/app.log" ]; then
+            tail -f "$INSTALL_DIR/app.log"
+        else
+            echo "❌ Log file not found: $INSTALL_DIR/app.log"
+        fi
         ;;
     update)
-        cd /opt/$APP_NAME
+        cd $INSTALL_DIR
         git pull origin main
-        docker stop $APP_NAME
-        docker rm $APP_NAME
-        docker build -t $APP_NAME .
-        docker run -d --name $APP_NAME -p 3000:3000 --restart unless-stopped $APP_NAME
-        echo "🚀 Updated $APP_NAME"
+        if [ -f "app.pid" ] && kill -0 $(cat "app.pid") 2>/dev/null; then
+            kill $(cat "app.pid")
+            rm "app.pid"
+            echo "🛑 Stopped $APP_NAME for update"
+        fi
+        npm install
+        npm run build
+        nohup npm start > app.log 2>&1 &
+        echo $! > app.pid
+        echo "🚀 Updated and restarted $APP_NAME"
         ;;
     status)
-        docker ps | grep $APP_NAME || echo "❌ $APP_NAME not running"
+        if [ -f "$INSTALL_DIR/app.pid" ] && kill -0 $(cat "$INSTALL_DIR/app.pid") 2>/dev/null; then
+            echo "✅ $APP_NAME is running with PID $(cat "$INSTALL_DIR/app.pid")"
+        else
+            echo "❌ $APP_NAME is not running."
+        fi
         ;;
     *)
         echo "Usage: $0 {start|stop|restart|logs|update|status}"
@@ -166,5 +199,3 @@ echo -e "${RED}🗑️ To uninstall: ${NC}${BLUE}bash $INSTALL_DIR/uninstall.sh$
 if [ ! -z "$DOMAIN" ]; then
     echo -e "${GREEN}🔒 SSL certificate will auto-renew every 90 days${NC}"
 fi
-
-echo -e "${YELLOW}⚠️  Please log out and log back in to use Docker without sudo${NC}"
