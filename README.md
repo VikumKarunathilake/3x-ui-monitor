@@ -3,12 +3,12 @@
   <p align="center">A modern web interface for monitoring 3X-UI client usage statistics.</p>
 </div>
 
-![Next.js](https://img.shields.io/badge/next%20js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
-![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![](https://badgen.net/badge/Next.js/000000?icon=nextjs)
+![](https://badgen.net/badge/React/20232A?icon=react)
+![](https://badgen.net/badge/Tailwind%20CSS/38B2AC?icon=tailwindcss)
+![](https://badgen.net/badge/TypeScript/3178C6?icon=typescript)
+![](https://badgen.net/badge/shadcn/ui/000000?icon=shadcnui)
+![](https://badgen.net/badge/License/MIT/yellow)
 
 ## ✨ Features
 
